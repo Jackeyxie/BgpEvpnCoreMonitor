@@ -8,7 +8,9 @@ BgpEvpnCoreMonitor may be installed using the RPM provided or manually.
 The RPM is installed using the usual steps for EOS extensions:
 
 ```
-Arista#copy <source>/BgpEvpnCoreMonitor-<version>.rpm extension:                                                               Copy completed successfully.
+Arista#copy <source>/BgpEvpnCoreMonitor-<version>.rpm extension:
+Copy completed successfully.
+
 Arista#extension BgpEvpnCoreMonitor-<version>.rpm 
 ```
 To verify that the extension is installed successfully: 
