@@ -5,7 +5,7 @@ An Arista EOS SDK Agent that Monitors the Status of BGP EVPN peers, and enables/
 ## Installation
 BgpEvpnCoreMonitor may be installed using the SWIX provided or manually.
 
-The SWIX is installed using the usual steps for EOS extensions:
+The RPM is installed using the usual steps for EOS extensions:
 ```
 Arista#copy <source>/BgpEvpnCoreMonitor-<version>.rpm extension:                                                               Copy completed successfully.
 Arista#extension BgpEvpnCoreMonitor-<version>.rpm 
