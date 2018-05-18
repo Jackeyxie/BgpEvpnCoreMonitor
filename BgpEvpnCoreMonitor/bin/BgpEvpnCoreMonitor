@@ -5,7 +5,6 @@
 EvpnBgpCheck Utility
 The purpose of this utility is to test BGP EVPN reachability, alert if its down and
 run a config change. On recovery run another config change.
-Add the following configuration snippets to change the default behavior.
 
 daemon EvpnBgpCheck
    exec /mnt/flash/EvpnBgpCheck.py
@@ -28,7 +27,6 @@ All new EOS releases include the SDK.
 #*     MODULES              *
 #****************************
 
-import time
 import sys
 import syslog
 import eossdk
