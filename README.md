@@ -3,7 +3,7 @@ An Arista EOS SDK Agent that Monitors the Status of BGP EVPN peers, and enables/
 
 
 ## Installation
-BgpEvpnCoreMonitor may be installed using the SWIX provided or manually.
+BgpEvpnCoreMonitor may be installed using the RPM provided or manually.
 
 The RPM is installed using the usual steps for EOS extensions:
 ```
@@ -29,4 +29,25 @@ Copy completed successfully.
 
 Arista# show boot-extensions
 BgpEvpnCoreMonitor-<version>.rpm 
+```
+
+
+Alternatively, BgpEvpnCoreMonitor may be installed manually.  NOTE: This installation method does not Survice reboots!
+
+The first step in doing so is to copy the BgpEvpnCoreMonitor script to the switch:
+```
+scp BgpEvpnCoreMonitor <user name>@<switch IP address>:/mnt/flash
+```
+Next, BgpEvpnCoreMonitor must be configured to interact with Sysdb by dropping into bash on the switch and executing	
+```
+sudo cp /usr/lib/SysdbMountProfiles/EosSdkAll /usr/lib/SysdbMountProfiles/BgpEvpnCoreMonitor
+```
+And then editing ```/usr/lib/SysdbMountProfiles/BgpEvpnCoreMonitor```, changing first line to being ```agentName:BgpEvpnCoreMonitor-%sliceId```
+
+Lastly, the BgpEvpnCoreMonitor daemon may be started using the conventional EOS daemon CLI:
+```
+configure 
+daemon BgpEvpnCoreMonitor
+exec /mnt/flash/BgpEvpnCoreMonitor
+no shut
 ```
