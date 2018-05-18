@@ -1,0 +1,396 @@
+#!/usr/bin/env python
+# Copyright (c) 2018 Arista Networks, Inc.  All rights reserved.
+# Arista Networks, Inc. Confidential and Proprietary.
+'''
+EvpnBgpCheck Utility
+The purpose of this utility is to test BGP EVPN reachability, alert if its down and
+run a config change. On recovery run another config change.
+Add the following configuration snippets to change the default behavior.
+
+daemon EvpnBgpCheck
+   exec /mnt/flash/EvpnBgpCheck.py
+   no shutdown
+   
+This requires the EOS SDK extension installed if its < EOS 4.17.0 release.
+All new EOS releases include the SDK.
+
+
+'''
+#************************************************************************************
+# Change log
+# ----------
+# Version 1.0.0  - 05/11/2018 - Russell Kelly -- russell@arista.com --  Initial Version
+#
+#*************************************************************************************
+#
+#
+#****************************
+#*     MODULES              *
+#****************************
+
+import time
+import sys
+import syslog
+import eossdk
+import re
+import pyinotify
+import json
+import functools
+from os import stat
+from stat import ST_SIZE
+
+LogFile = '/var/log/messages'
+
+# The line in the log to match on 
+expression = ".*BGP-5-ADJCHANGE.*"
+
+
+#****************************
+#GLOBAL VARIABLES -         *
+#****************************
+
+#CURRENTSTATUS   1 is Good, 0 is Down
+CURRENTSTATUS=1
+
+# Used in the system state logic to only Action Change if last peer is down, or first time up.
+FAILITERATION=0
+
+# Used to Monitor How many times we've actioned an ESI Interface enable or disable
+ACTIONENABLECOUNT = 0
+ACTIONDISABLECOUNT = 0
+
+#***************************
+#*     CLASSES          *
+#***************************
+
+
+
+class InotifyHandler(pyinotify.ProcessEvent):
+    
+    """Class for handling inotify events.
+    The different event handlers will be called when the file being watched,
+    the logfile (/var/log/messages), changes
+    on the disk.  Log the different notifications but process only following
+    process_IN_MODIFY as this is when we need to read the last lines of the file."""
+    
+    parent = None
+    
+    def my_init(self, parent):
+        self.parent = parent
+
+    # Called when the writes to the file are complete and it is closed.
+    # Thus, the processing of the config  file is triggered following only
+    # this notification.
+    def process_IN_CLOSE_WRITE(self, event):
+        #syslog.syslog("Log file, %s, updated & saved: process" % LogFile)
+        pass
+    
+    # Called every time file content changes, i.e. potentially multiple times
+    # when an open file is being manipulated.  Therefore do not trigger processing
+    # following this notification.
+    def process_IN_MODIFY(self, event):
+        #syslog.syslog("Log file, %s, modified" % LogFile)
+        self.parent.tail()
+    
+    # Create events also result in a close write and modify notifications.  Processing
+    # is triggered from the former so simply log the create notification here.
+    def process_IN_CREATE(self, event):
+        #syslog.syslog("Log file, %s, created" % LogFile)
+        pass
+    
+    # No processing can be done once the file is deleted.  Simply log here.
+    # Potentially an error so log to stderr too.
+    def process_IN_DELETE(self, event):
+        syslog.syslog("Log file, %s, deleted" % LogFile)
+        sys.stderr.write("Log file, %s, deleted\n" % LogFile)
+
+
+
+class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.IntfHandler, eossdk.EthLagIntfHandler):
+    
+    def __init__(self, sdk, EapiMgr, intfMgr, EthLagIntfMgr):
+        syslog.syslog("Initialization starting")
+        agentMgr = sdk.get_agent_mgr()
+        self.agentMgr = agentMgr
+        self.intfMgr = intfMgr
+        self.EthLagIntfMgr = EthLagIntfMgr
+        self.tracer = eossdk.Tracer("EvpnBgpCheckPythonAgent")
+        eossdk.AgentHandler.__init__(self, agentMgr)
+        eossdk.IntfHandler.__init__(self, intfMgr)
+        eossdk.EthLagIntfHandler.__init__(self, EthLagIntfMgr)
+        self.numIntfChanges = 0
+        eossdk.FdHandler.__init__(self)
+        self.EapiMgr= EapiMgr
+        
+        # Now register with inotify to receive be notified of changes to the config file
+        
+        self.logfile = LogFile
+        self.wm = pyinotify.WatchManager()
+        handler = functools.partial(InotifyHandler, parent=self)
+        mask = pyinotify.IN_MODIFY | pyinotify.IN_CREATE | pyinotify.IN_DELETE | pyinotify.IN_CLOSE_WRITE
+        self.wm.watch_transient_file(LogFile, mask, handler)
+        self.inotifier = pyinotify.AsyncNotifier(self.wm,InotifyHandler(parent=self))
+        self.inotifier.coalesce_events(True)
+        self.inotify_fd = self.wm.get_fd()
+        self.tracer.trace0("Watching inotify fd: %d" % self.inotify_fd)
+        self.watch_readable(self.inotify_fd, True)
+
+        
+        # Now register the expression to match and get to the end of the logfile
+        
+        self.expression = expression
+        self.f = open(self.logfile,"r")
+        file_len = stat(self.logfile)[ST_SIZE]
+        self.f.seek(file_len)
+        self.pos = self.f.tell()
+        
+        
+        self.tracer.trace0("Python agent constructed")
+        syslog.syslog("Initialization finishing")
+
+
+    def on_initialized(self):
+        self.tracer.trace0("Initialized")
+        syslog.syslog("EvpnBgpCheck Initialized")
+        self.agentMgr.status_set("Agent Status:", "Administratively Up")
+        self.watch_all_intfs(True)
+        self.watch_all_eth_lag_intfs(True)
+        
+        #Lets check and set our state for each option during initialization.
+        #i.e. after you do a 'no shut' on the daemon, we'll check each of these
+        #and set status.
+
+            
+        #Start our handler now.
+        self.agentMgr.status_set("BGP EVPN Peers Current Status:", "Unknown")
+        lastChangeTime = re.sub( ' +', ' ', time.ctime() )
+        self.EsiInterfaceList()
+        self.BgpEvpnCheckPeer()
+        self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Enable Action: ", "Count: "+str(ACTIONENABLECOUNT))
+        self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Disable Action: ", "Count: "+str(ACTIONDISABLECOUNT))
+    
+   
+    def on_oper_status(self, intfId, operState):
+        #Callback provided by IntfHandler when an interface's configuration changes
+        self.numIntfChanges += 1
+        syslog.syslog("The Following Interfaces Changed: " +intfId.to_string())
+
+
+    def on_agent_enabled(self, enabled):
+        #When shutdown set the status as such, and then shutdown
+        if not enabled:
+            self.tracer.trace0("Shutting down")
+            self.agentMgr.status_del("Agent Status:")
+            self.agentMgr.status_set("Agent Status:", "Administratively Down")
+            self.agentMgr.agent_shutdown_complete_is(True)
+        
+
+    def _reset(self):
+        #Resets the logfile if current position (self.pos) is > Logfile size
+        self.f.close()
+        self.f = open(self.logfile, "r")
+        self.pos = self.f.tell()
+
+
+    def on_readable(self, fd):
+        #Called when file descriptor number is readable
+        if fd == self.inotify_fd:
+            self.inotifier.handle_read()
+
+
+    def tail(self):
+        RunBgpCheck = False
+        while self.pos < stat(self.logfile)[ST_SIZE]:
+            self.pos = self.f.tell()
+            line = self.f.readline()
+            if not line:
+                if stat(self.logfile)[ST_SIZE] < self.pos:
+                    self._reset()
+                else:
+                    self.f.seek(self.pos)
+            else:
+    
+                # Look for a matching line
+    
+                if re.findall(self.expression, line, re.I):
+                    RunBgpCheck = True
+                else:
+                    pass
+        if RunBgpCheck:
+            self.BgpEvpnCheckPeer()
+                    
+        
+        
+    def BgpEvpnCheckPeer(self):
+
+        #Global variables are needed
+        global FAILITERATION
+        global CURRENTSTATUS
+        global ACTIONENABLECOUNT
+        global ACTIONDISABLECOUNT
+        
+        #########
+
+        
+        #Let's check our BGP EVPN Peers and see if they're up or down.
+
+        if self.bgpevpn_check() == 1:
+            if CURRENTSTATUS == 1 and FAILITERATION == 0:
+                self.agentMgr.status_set("BGP EVPN Peers Current Status:", "UP")
+            elif CURRENTSTATUS == 0:
+                
+                # Now we have to do all our health checking logic here...
+                # If we are here, then we are up
+                # We were down but now up, so now let's change the configuration and set CURRENTSTATUS to 1
+                # and the FAILITERATION Back to Zero
+
+                #Let's get the ESI Interfaces on the Routers
+                EsiInterfaceList = self.EsiInterfaceList()
+                
+                #Run the configuration Change
+                CURRENTSTATUS = 1
+                FAILITERATION = 0
+                ACTIONENABLECOUNT += 1
+                lastChangeTime = re.sub( ' +', ' ', time.ctime() )
+                self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Enable Action: ", "Count: "+str(ACTIONENABLECOUNT)+ " ( last actioned at " +str(lastChangeTime)+" )")
+                self.agentMgr.status_set("BGP EVPN Peers Current Status:", "UP")
+                self.change_config('RECOVER', EsiInterfaceList)
+        else:
+            
+            #Bgp Evpn peers are down....lets shut the Esi Interfaces
+
+            if FAILITERATION == 0:
+                self.agentMgr.status_set("BGP EVPN Peers Current Status:", "FAIL")
+                
+                #Let's get the ESI Interfaces on the Routers
+                EsiInterfaceList = self.EsiInterfaceList()
+                
+                #Run the configuration Change
+                self.change_config('FAIL', EsiInterfaceList)
+                ACTIONDISABLECOUNT += 1
+                lastChangeTime = re.sub( ' +', ' ', time.ctime() )
+                self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Disable Action: ", "Count: "+str(ACTIONDISABLECOUNT)+ " ( last actioned at " +str(lastChangeTime)+" )")
+                FAILITERATION += 1
+                CURRENTSTATUS = 0
+            else:
+                pass
+            
+    
+            
+    def bgpevpn_check(self):    
+        try:
+            checkconfig = self.EapiMgr.run_show_cmd('show bgp evpn summary')
+            if(checkconfig.success()):
+                try:
+                    data = json.loads(checkconfig.responses()[0])
+                    peers = data['peers']
+                    count = 0
+                    for peer in data['peers']:
+                        if data['peers'][peer]['peerState'] == 'Established':
+                            count += 1
+                            #syslog.syslog("Peer is up: %s" % count)
+                        else:
+                            pass
+                except KeyError:
+                    return syslog.syslog(checkconfig.error_message())
+            else:
+                syslog.syslog(checkconfig.error_message())
+                syslog.syslog("Unable to get BGP Peers")
+        except:
+            syslog.syslog("Unable to check config via eAPI interaction module in EOS SDK.")
+        if count > 0:
+            return 1
+        return 0
+    
+    def EsiInterfaceList(self):
+        checkconfig = self.EapiMgr.run_show_cmd('show running-config')
+        if(checkconfig.success()):
+            runningconfig = json.loads(checkconfig.responses()[0])
+            esi = []
+            for intf in runningconfig['cmds']:
+              if ('interface Port-Channel' in intf) or ('interface Ethernet' in intf):
+                 try:
+                    runningconfig['cmds'][intf]['cmds']['evpn ethernet-segment']['cmds']
+                    esi.append( intf )
+                 except KeyError:
+                    pass
+        else:
+            syslog.syslog("Unable to get ESI Interfacess")
+        
+        # Log the interfaces and Set the ESI Interface List Agent Status 
+        syslog.syslog("Found the following ESI Interfaces %s" % esi)
+        if len(esi) == 0:
+            self.agentMgr.status_set("BgpEvpnCoreMonitor Monitoring ESI Interfaces: ", "No ESI Interfaces Found")
+        else:
+            EsiString = ', '.join(str(e) for e in esi)
+            self.agentMgr.status_set("BgpEvpnCoreMonitor Monitoring ESI Interfaces: ", EsiString)
+        
+        #Return the esi vallue
+        return esi
+
+
+    def change_config(self, STATUS, EsiInterfaceList):
+        '''
+        Method to change configuration of switch.
+        If STATUS is FAIL, then shut ESI Interfaces using the EOS SDK Intf Module
+        If STATUS RECOVER (or else) then no shut the ESI Interfaces using the EOS SDK Intf Module
+        '''
+        if STATUS == 'FAIL':
+            self.tracer.trace0("Status FAIL. Applying config changes")
+            #Now apply config changes
+            try:
+                for entry in EsiInterfaceList:
+                    StrEntry = str(entry)
+                    IntfEntry = StrEntry.replace('interface ', '')
+                    if 'Port-Channel' in IntfEntry: 
+                        interfaceID = eossdk.IntfId(IntfEntry)
+                        members = self.EthLagIntfMgr.eth_lag_intf_member_iter(interfaceID)
+                        for member in members:    
+                            self.intfMgr.admin_enabled_is(member, False)
+                            syslog.syslog("Disabled ESI Interface: " +member.to_string())
+                    else:
+                        interfaceID = eossdk.IntfId(IntfEntry)
+                        self.intfMgr.admin_enabled_is(interfaceID, False)
+                        syslog.syslog("Disabled ESI Interface: " +interfaceID.to_string())
+            except:
+                syslog.syslog("Unable to apply config via eAPI interaction module in EOS SDK.")
+                return 0
+        else:
+            self.tracer.trace0("Status Recover. Applying config changes.")
+            #Now apply config changes
+            try:
+                for entry in EsiInterfaceList:
+                    StrEntry = str(entry)
+                    IntfEntry = StrEntry.replace('interface ', '')
+                    if 'Port-Channel' in IntfEntry: 
+                        interfaceID = eossdk.IntfId(IntfEntry)
+                        members = self.EthLagIntfMgr.eth_lag_intf_member_iter(interfaceID)
+                        for member in members:    
+                            self.intfMgr.admin_enabled_is(member, True)
+                            syslog.syslog("Enabled ESI Interface: " +member.to_string())
+                    else:
+                        interfaceID = eossdk.IntfId(IntfEntry)
+                        self.intfMgr.admin_enabled_is(interfaceID, True)
+                        syslog.syslog("Enabled ESI Interface: " +interfaceID.to_string())
+            except:
+                syslog.syslog("Unable to apply config via eAPI interaction module in EOS SDK.")
+                return 0
+
+        return 1
+
+
+
+#=============================================
+# MAIN
+#=============================================
+
+def main():
+    syslog.openlog(ident="BGPEVPNCOREISOLATION-ALERT-AGENT", logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
+    sdk = eossdk.Sdk()
+    EvpnBgpCheck = BgpEvpnCoreIsolationAgent(sdk, sdk.get_eapi_mgr(), sdk.get_intf_mgr(), sdk.get_eth_lag_intf_mgr())
+    sdk.main_loop(sys.argv)
+    # Run the agent until terminated by a signal
+
+
+if __name__ == "__main__":
+    main()
