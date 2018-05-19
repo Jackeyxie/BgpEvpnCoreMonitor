@@ -40,7 +40,9 @@ BgpEvpnCoreMonitor-<version>.rpm
 ```
 
 
-Alternatively, BgpEvpnCoreMonitor may be installed manually.  NOTE: This installation method does not Survice reboots!
+Alternatively, BgpEvpnCoreMonitor may be installed manually.  
+
+```NOTE: This installation method does not survive router reboots!```
 
 The first step in doing so is to copy the BgpEvpnCoreMonitor script to the switch:
 
