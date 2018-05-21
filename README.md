@@ -80,8 +80,7 @@ And then editing ```/usr/lib/SysdbMountProfiles/BgpEvpnCoreMonitor```, changing 
 Lastly, the BgpEvpnCoreMonitor daemon may be started using the conventional EOS daemon CLI:
 
 ```
-configure 
 daemon BgpEvpnCoreMonitor
-exec /mnt/flash/BgpEvpnCoreMonitor
+exec /usr/local/bin/BgpEvpnCoreMonitor
 no shut
 ```
