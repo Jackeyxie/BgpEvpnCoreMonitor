@@ -5,10 +5,18 @@ An Arista EOS SDK Agent that Monitors the Status of BGP EVPN peers, and enables/
 ## Installation
 BgpEvpnCoreMonitor may be installed using the RPM provided or manually.
 
-The RPM is installed using the usual steps for EOS extensions:
+The RPM is installed using the usual steps for an EOS extension (survivable over reboots):
+
+Copy the RPM to the switch
 
 ```
-Arista#copy <source>/BgpEvpnCoreMonitor-<version>.rpm extension:
+scp BgpEvpnCoreMonitor-<version>.rpm <user>@<switch-ip>:/mnt/flash/BgpEvpnCoreMonitor-<version>.rpm
+```
+
+Now install the RPM as an extension
+
+```
+Arista#copy flash:BgpEvpnCoreMonitor-<version>.rpm extension:
 Copy completed successfully.
 
 Arista#extension BgpEvpnCoreMonitor-<version>.rpm 
@@ -21,10 +29,21 @@ Now just configure the BgpEvpnCoreMonitor daemon as below:
 
 ```
 daemon BgpEvpnCoreMonitor
-exec /mnt/flash/BgpEvpnCoreMonitor
+exec /usr/local/bin/BgpEvpnCoreMonitor
 no shut
 ```
-Lastly, if it is desired that BgpEvpnCoreMonitor should be loaded automatically at boot time, the boot extensions must be modified accordingly:
+If you want to set the switch so that the agent only checks for ESI interfaces once upon initialization, set the option ESICHECK to "False".  This can be safely used if the number of ESI interfaces configred do not change.   The benefit of skipping this change is that the interfaces can be enabled/disabled a little faster, as the sub routine to check for configured ESI interfaces at time of failure is skipped.
+
+```
+daemon BgpEvpnCoreMonitor
+exec /usr/local/bin/BgpEvpnCoreMonitor
+option ESICHECK value False
+no shut
+```
+
+The default is True, whereby whenever all BGP EVPN peerings are UP or DOWN, the active ESI interfaces are checked before being disabled or enabled.
+
+Lastly, if it is desired that BgpEvpnCoreMonitor be loaded automatically at boot time, the boot extensions must be modified accordingly:
 
 ```
 Arista# show installed-extensions
