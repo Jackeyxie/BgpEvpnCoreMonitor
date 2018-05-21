@@ -7,8 +7,8 @@ The purpose of this utility is to test BGP EVPN reachability, alert if its down 
 run a config change. On recovery run another config change.
 Add the following configuration snippets to change the default behavior.
 
-daemon EvpnBgpCheck
-   exec /mnt/flash/EvpnBgpCheck.py
+daemon BgpEvpnCoreMonitor
+   exec /usr/local/bin/BgpEvpnCoreMonitor
    no shutdown
    
 This requires the EOS SDK extension installed if its < EOS 4.17.0 release.
@@ -28,7 +28,6 @@ All new EOS releases include the SDK.
 #*     MODULES              *
 #****************************
 
-from time import sleep
 import time
 import sys
 import syslog
