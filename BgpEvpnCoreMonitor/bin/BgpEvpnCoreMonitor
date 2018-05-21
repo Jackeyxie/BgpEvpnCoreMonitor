@@ -5,6 +5,7 @@
 EvpnBgpCheck Utility
 The purpose of this utility is to test BGP EVPN reachability, alert if its down and
 run a config change. On recovery run another config change.
+Add the following configuration snippets to change the default behavior.
 
 daemon EvpnBgpCheck
    exec /mnt/flash/EvpnBgpCheck.py
@@ -27,6 +28,8 @@ All new EOS releases include the SDK.
 #*     MODULES              *
 #****************************
 
+from time import sleep
+import time
 import sys
 import syslog
 import eossdk
@@ -56,6 +59,13 @@ FAILITERATION=0
 # Used to Monitor How many times we've actioned an ESI Interface enable or disable
 ACTIONENABLECOUNT = 0
 ACTIONDISABLECOUNT = 0
+
+# Global Switches used to check ESI interfaces on each iteration.  If just a few changes with ESI
+# then reasonable to not check for ESI interfaces on every BGP Peer iteration.   Just take ESI
+# interfaces in the global ESI list computed on Agent initialization.  Can speed up convergence
+
+EsiInterfaceList = []
+DISABLEINTCHECK = False
 
 #***************************
 #*     CLASSES          *
@@ -148,11 +158,21 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
 
 
     def on_initialized(self):
+        global EsiInterfaceList
         self.tracer.trace0("Initialized")
         syslog.syslog("EvpnBgpCheck Initialized")
-        self.agentMgr.status_set("Agent Status:", "Administratively Up")
+        lastChangeTime = re.sub( ' +', ' ', time.ctime() )
+        self.agentMgr.status_set("Agent Status:", "Administratively Up (Since: "+str(lastChangeTime)+" )")
         self.watch_all_intfs(True)
         self.watch_all_eth_lag_intfs(True)
+        
+        # Lets Check if the Agent should Check ESI Interfaces (Default is to check every BGP change)
+        global DISABLEINTCHECK
+        if self.agentMgr.agent_option("ESICHECK"):
+            self.on_agent_option("ESICHECK", self.agentMgr.agent_option("ESICHECK"))
+        else:
+            #We'll just use the default time specified by global variable
+            self.agentMgr.status_set("Agent ESI Int Check:", "True (default)")
         
         #Lets check and set our state for each option during initialization.
         #i.e. after you do a 'no shut' on the daemon, we'll check each of these
@@ -161,12 +181,25 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
             
         #Start our handler now.
         self.agentMgr.status_set("BGP EVPN Peers Current Status:", "Unknown")
-        lastChangeTime = re.sub( ' +', ' ', time.ctime() )
-        self.EsiInterfaceList()
+        EsiInterfaceList = self.EsiInterfaceList()
         self.BgpEvpnCheckPeer()
         self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Enable Action: ", "Count: "+str(ACTIONENABLECOUNT))
         self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Disable Action: ", "Count: "+str(ACTIONDISABLECOUNT))
-    
+        
+    def on_agent_option(self, optionName, value):
+        global DISABLEINTCHECK
+        #options are a key/value pair
+        #Here we set the status output when user does a show agent command
+        
+        if optionName == "ESICHECK":
+            if not value:
+                self.tracer.trace3("ESICHECK Deleted")
+                self.agentMgr.status_set("Agent ESI Int Check:", "True (default)")
+            else:
+                self.tracer.trace3("Adding ESICHECK %s" % value)
+                self.agentMgr.status_set("Agent ESI Int Check:", "%s" % value)
+                DISABLEINTCHECK = str(value)
+
    
     def on_oper_status(self, intfId, operState):
         #Callback provided by IntfHandler when an interface's configuration changes
@@ -226,6 +259,7 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
         global CURRENTSTATUS
         global ACTIONENABLECOUNT
         global ACTIONDISABLECOUNT
+        global EsiInterfaceList
         
         #########
 
@@ -242,8 +276,12 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
                 # We were down but now up, so now let's change the configuration and set CURRENTSTATUS to 1
                 # and the FAILITERATION Back to Zero
 
-                #Let's get the ESI Interfaces on the Routers
-                EsiInterfaceList = self.EsiInterfaceList()
+                #Let's get the ESI Interfaces on the Routers every run if we've set the ESI interface check switch
+                if DISABLEINTCHECK:
+                    pass
+                else:
+                    syslog.syslog("I got here!")
+                    EsiInterfaceList = self.EsiInterfaceList()
                 
                 #Run the configuration Change
                 CURRENTSTATUS = 1
@@ -260,8 +298,12 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
             if FAILITERATION == 0:
                 self.agentMgr.status_set("BGP EVPN Peers Current Status:", "FAIL")
                 
-                #Let's get the ESI Interfaces on the Routers
-                EsiInterfaceList = self.EsiInterfaceList()
+                #Let's get the ESI Interfaces on the Routers every run if we've set the ESI interface check switch
+                if DISABLEINTCHECK:
+                    pass
+                else:
+                    syslog.syslog("I got here too!")
+                    EsiInterfaceList = self.EsiInterfaceList()
                 
                 #Run the configuration Change
                 self.change_config('FAIL', EsiInterfaceList)
