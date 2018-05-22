@@ -4,12 +4,12 @@
 '''
 BgpEvpnCoreMonitor Agent
 
-The purpose of this Agent is to test BGP EVPN reachability, alert if its down and
+The purpose of this agent is to test BGP EVPN reachability, alert if its down and
 run a config change. On recovery run another config change.
 Add the following configuration snippets to change the default behavior.
 
-daemon BgpEvpnCoreMonitor
-   exec /usr/local/bin/BgpEvpnCoreMonitor
+daemon EvpnBgpCheck
+   exec /mnt/flash/EvpnBgpCheck.py
    no shutdown
    
 This requires the EOS SDK extension installed if its < EOS 4.17.0 release.
@@ -29,6 +29,7 @@ All new EOS releases include the SDK.
 #*     MODULES              *
 #****************************
 
+from time import sleep
 import time
 import sys
 import syslog
@@ -280,7 +281,6 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
                 if DISABLEINTCHECK:
                     pass
                 else:
-                    syslog.syslog("I got here!")
                     EsiInterfaceList = self.EsiInterfaceList()
                 
                 #Run the configuration Change
@@ -302,7 +302,6 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
                 if DISABLEINTCHECK:
                     pass
                 else:
-                    syslog.syslog("I got here too!")
                     EsiInterfaceList = self.EsiInterfaceList()
                 
                 #Run the configuration Change
