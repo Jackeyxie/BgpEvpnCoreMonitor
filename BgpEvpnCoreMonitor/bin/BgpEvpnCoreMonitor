@@ -4,9 +4,11 @@
 '''
 BgpEvpnCoreMonitor Agent
 
-The purpose of this agent is to test BGP EVPN reachability, alert if its down and
-run a config change. On recovery run another config change.
-Add the following configuration snippets to change the default behavior.
+The purpose of this agent is to test BGP EVPN reachability, alert if all BGP EVPN peers are down and disable all ESI 
+interfaces on the routers.
+Conversley when the Peers come back up the ESI interfaces are re-enabled.  This is triggered via inotify, monitoring 
+the logfile on the router for any BGP ADJ changes.
+
 
 daemon EvpnBgpCheck
    exec /mnt/flash/EvpnBgpCheck.py
