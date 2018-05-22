@@ -28,7 +28,7 @@ To verify that the extension is installed successfully:
 
 ```Arista#show extensions```
 
-Now just configure the BgpEvpnCoreMonitor daemon as below:
+The RPM should have automatically configured the BgpEvpnCoreMonitor daemon as below:
 
 ```
 daemon BgpEvpnCoreMonitor
