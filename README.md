@@ -1,7 +1,7 @@
 # BgpEvpnCoreMonitor
 An Arista EOS SDK Agent that Monitors the Status of BGP EVPN peers, and enables/disables ESI interfaces depending on the status of the said BGP EVPN Peers.  The Figure below details this behaviour.
 
-<img src="BgpEvpnCoreMonitor-Overview.jpg" alt="Drawing"  height="600" width="1000">
+<img src="BgpEvpnCoreMonitor-Overview.jpg" alt="Drawing"  height="400" width="1000">
 Figure 1: Overview of the failure case the BgpEvpnCoreMonitor agent addresses
 
 
