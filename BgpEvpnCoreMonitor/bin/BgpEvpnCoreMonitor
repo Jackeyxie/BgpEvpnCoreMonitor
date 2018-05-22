@@ -10,9 +10,9 @@ Conversley when the Peers come back up the ESI interfaces are re-enabled.  This 
 the logfile on the router for any BGP ADJ changes.
 
 
-daemon EvpnBgpCheck
-   exec /mnt/flash/EvpnBgpCheck.py
-   no shutdown
+daemon BgpEvpnCoreMonitor
+   exec /usr/local/bin/BgpEvpnCoreMonitor
+   no shut
    
 This requires the EOS SDK extension installed if its < EOS 4.17.0 release.
 All new EOS releases include the SDK.
