@@ -35,7 +35,7 @@ daemon BgpEvpnCoreMonitor
 exec /usr/local/bin/BgpEvpnCoreMonitor
 no shut
 ```
-If you want to set the switch so that the agent only checks for ESI interfaces once upon initialization, set the option ESICHECK to "False".  This can be safely used if the number of ESI interfaces configred do not change.   
+If you want to set the switch so that the agent only checks for ESI interfaces once upon initialization, set the option ESICHECK to "False".  This can be safely used if the number of ESI interfaces configured does not change.   
 
 The benefit of skipping this change is that the interfaces can be enabled/disabled a little faster, as the sub routine to check for configured ESI interfaces at time of BGP EVPN failure is skipped.
 
