@@ -290,7 +290,7 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
                 FAILITERATION = 0
                 ACTIONENABLECOUNT += 1
                 lastChangeTime = re.sub( ' +', ' ', time.ctime() )
-                self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Enable Action: ", "Count: "+str(ACTIONENABLECOUNT)+ " ( last actioned at " +str(lastChangeTime)+" )")
+                self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Enable Action: ", "Count: "+str(ACTIONENABLECOUNT)+ " (last actioned: " +str(lastChangeTime)+")")
                 self.agentMgr.status_set("BGP EVPN Peers Current Status:", "UP")
                 self.change_config('RECOVER', EsiInterfaceList)
         else:
@@ -310,7 +310,7 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
                 self.change_config('FAIL', EsiInterfaceList)
                 ACTIONDISABLECOUNT += 1
                 lastChangeTime = re.sub( ' +', ' ', time.ctime() )
-                self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Disable Action: ", "Count: "+str(ACTIONDISABLECOUNT)+ " ( last actioned at " +str(lastChangeTime)+" )")
+                self.agentMgr.status_set("BgpEvpnCoreMonitor ESI Int Disable Action: ", "Count: "+str(ACTIONDISABLECOUNT)+ " (last actioned: " +str(lastChangeTime)+")")
                 FAILITERATION += 1
                 CURRENTSTATUS = 0
             else:
