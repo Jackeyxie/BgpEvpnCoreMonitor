@@ -165,7 +165,7 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
         self.tracer.trace0("Initialized")
         syslog.syslog("EvpnBgpCheck Initialized")
         lastChangeTime = re.sub( ' +', ' ', time.ctime() )
-        self.agentMgr.status_set("Agent Status:", "Administratively Up (Since: "+str(lastChangeTime)+" )")
+        self.agentMgr.status_set("Agent Status:", "Administratively Up (Since: "+str(lastChangeTime)+")")
         self.watch_all_intfs(True)
         self.watch_all_eth_lag_intfs(True)
         
