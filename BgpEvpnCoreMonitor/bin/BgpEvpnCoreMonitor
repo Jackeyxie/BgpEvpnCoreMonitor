@@ -19,12 +19,17 @@ All new EOS releases include the SDK.
 
 
 '''
-#************************************************************************************
-# Change log
-# ----------
-# Version 1.0.0  - 05/11/2018 - Russell Kelly -- russell@arista.com --  Initial Version
-#
-#*************************************************************************************
+#*****************************************************************************************
+#* Change log                                                                            *
+#* ----------                                                                            *
+#* Version 1.0.0  - 05/11/2018 - Russell Kelly -- russell@arista.com --  Initial Version *
+#*                                                                                       *
+#* Version 1.0.2  - 05/16/2019 - Russell Kelly -- russell@arista.com                     *
+#*                                             --  2nd Version: Change JSON Key for 4.22 *
+#*                                                 add zero return codes for BGP peer    *
+#*                                                 check failure handling                *
+#*                                                                                       *
+#*****************************************************************************************
 #
 #
 #****************************
@@ -324,21 +329,44 @@ class BgpEvpnCoreIsolationAgent(eossdk.AgentHandler, eossdk.FdHandler, eossdk.In
             if(checkconfig.success()):
                 try:
                     data = json.loads(checkconfig.responses()[0])
-                    peers = data['peers']
+                    try:
+                        peers = data['vrfs']['default']['peers']
+                    except:
+                        pass
+                    try:
+                        peers = data['peers']
+                    except:
+                        pass
                     count = 0
-                    for peer in data['peers']:
-                        if data['peers'][peer]['peerState'] == 'Established':
-                            count += 1
-                            #syslog.syslog("Peer is up: %s" % count)
-                        else:
-                            pass
+                    try:
+                        for peer in peers:
+                            if data['peers'][peer]['peerState'] == 'Established':
+                                count += 1
+                                #syslog.syslog("Peer is up: %s" % count)
+                            else:
+                                pass
+                    except:
+                        pass
+                    try:
+                        for peer in peers:
+                            if data['vrfs']['default']['peers'][peer]['peerState'] == 'Established':
+                                count += 1
+                                #syslog.syslog("Peer is up: %s" % count)
+                            else:
+                                pass
+                    except:
+                        pass
                 except KeyError:
-                    return syslog.syslog(checkconfig.error_message())
+                    syslog.syslog(checkconfig.error_message())
+                    syslog.syslog("JSON Key Error Getting BGP Peers")
+                    return 0
             else:
                 syslog.syslog(checkconfig.error_message())
                 syslog.syslog("Unable to get BGP Peers")
+                return 0
         except:
             syslog.syslog("Unable to check config via eAPI interaction module in EOS SDK.")
+            return 0
         if count > 0:
             return 1
         return 0
