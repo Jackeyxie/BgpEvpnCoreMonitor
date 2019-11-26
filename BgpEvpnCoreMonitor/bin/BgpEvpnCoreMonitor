@@ -15,7 +15,7 @@ daemon BgpEvpnCoreMonitor
    no shut
    
 This requires the EOS SDK extension installed if its < EOS 4.17.0 release.
-All new EOS releases include the SDK.
+All new EOS releases include the SD.
 
 
 '''
