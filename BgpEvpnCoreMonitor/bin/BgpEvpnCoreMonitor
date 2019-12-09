@@ -4,7 +4,7 @@
 '''
 BgpEvpnCoreMonitor Agent
 
-The purpose of this agent is to test BGP EVPN reachability, alert if all BGP EVPN peers are down and disable all ESI 
+The purpose of this agent is to test BGP EVPN reachability, and alert if all BGP EVPN peers are down and disable all ESI 
 interfaces on the routers.
 Conversely when the Peers come back up the ESI interfaces are re-enabled.  This is triggered via inotify, monitoring 
 the logfile on the router for any BGP ADJ changes.
